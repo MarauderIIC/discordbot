@@ -1,1 +1,4 @@
 discordtoken.txt
+venv
+.vscode
+__pycache__
