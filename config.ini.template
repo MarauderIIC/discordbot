@@ -1,0 +1,42 @@
+[files]
+air = mlg-airhorn.mp3
+jenkins = Leeroy Jenkins.mp3
+someday = Spongebob - Maybe Someday.mp3
+
+[admins]
+admins = your_discord_username_here
+
+[config]
+path = c:/path/to/soundboard/files/directory/
+prefix = !
+token = c:/path/to/discordtoken.txt
+
+[commands]
+d20 = d20
+play = play,p,!
+playlist = playlist
+show-admins = show-admins
+stop = stop
+join-me = join-me,join
+leave-voice = leave-voice,leave
+help = help
+
+[helps]
+d20 = {cmd}: Roll a d20
+play = {cmd}: Play an audio file from the playlist. For example, "!play air" or "!!air"
+playlist = {cmd}: Show available audio files
+show-admins = {cmd}: List bot administrators
+stop = {cmd}: Stop playback
+join-me = {cmd}: Join your voice channel
+leave-voice = {cmd}: Leave the current voice channel
+help = {cmd}: List commands. {cmd} <command without prefix>: Display detailed help.
+
+[priv_commands]
+; Reload the configuration file
+reconfig = reconfig
+; Restart the bot
+restart = restart,update
+; Make it so that only admins can send commands
+maintenance = maintenance
+set-spam-timer = set-spam-timer
+dump-spam-status = dump-spam-status
