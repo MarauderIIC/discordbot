@@ -1,6 +1,8 @@
 # discordbot
 A discord bot providing soundboard functionality with customizable commands, designed to run on the same machine that the soundboard files are hosted on.
 
+I use it personally but maybe you'll get some use out of it.
+
 This is written in the Python 3 programming language, which you can download from [here](https://python.org). Download and install the newest version of Python 3; this was tested on Python 3.12.0. Check the box to add python to your `PATH`. If it asks to add `py` to your path, set that too.
 
 I use this on Windows, but it'll probably work on Linux with little-to-no changes. It uses the Python discord library (documentation is [here](https://discordpy.readthedocs.io/), but you don't need to read it to use this bot). It has a few awkward parts since it was started in 2017 with an earlier discordpy version. To get the necessary libraries to run the bot:
