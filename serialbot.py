@@ -47,7 +47,6 @@ class SerialMember(discord.Member):
         return getattr(self.discord_member, attr)
 
 
-# TODO: Inherit from MarBot instead, and handle hardware_guild_id and hardware_user
 class SerialBot(discordbot.MarBot):
     def __init__(self, port: str, baud: int) -> None:
         discord.utils.setup_logging(
@@ -61,6 +60,7 @@ class SerialBot(discordbot.MarBot):
         intents.message_content = True
         super().__init__(intents=intents)
 
+        # TODO: Handle hardware_user config instead of hardcoding it into serial_user.
         self.serial_user = "marauderiic"
         self.results: List[concurrent.futures.Future] = []  # type: ignore # There's only so much I can care about getting this typed
 
