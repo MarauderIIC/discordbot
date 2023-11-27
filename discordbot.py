@@ -725,28 +725,29 @@ class MarBot(discord.Client):
         print("\tAllow: Default reason")
         await function(author, channel, args)
 
-    @staticmethod
-    def defaults() -> "MarBot":
-        """
-        Create a basic MarBot and set up the discord logging.
-        """
-        # Since we can't use run and await self.close() successfully, we have to set up logging ourselves.
-        discord.utils.setup_logging(
-            handler=discord.utils.MISSING,
-            formatter=discord.utils.MISSING,
-            level=discord.utils.MISSING,
-            root=False,
-        )
+def create() -> MarBot:
+    """
+    Create a basic MarBot and set up the discord logging.
+    """
 
-        intents = discord.Intents.default()
-        intents.message_content = True
-        client = MarBot(intents=intents)
-        return client
+    # Since we can't use run and await self.close() successfully, we have to set up logging ourselves.
+    discord.utils.setup_logging(
+        handler=discord.utils.MISSING,
+        formatter=discord.utils.MISSING,
+        level=discord.utils.MISSING,
+        root=False,
+    )
 
-def main(client: Optional[MarBot] = None, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    intents = discord.Intents.default()
+    intents.message_content = True
+    client = MarBot(intents=intents)
+    # client.run()
+    return client
+
+def main(client: Optional[MarBot] = None, loop = None) -> None:
 
     if client is None:
-        client = MarBot.defaults()
+        client = create()
 
     async def main_task() -> None:
         await client.start(client.token)
