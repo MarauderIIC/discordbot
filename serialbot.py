@@ -49,7 +49,7 @@ class SerialMember(discord.Member):
 
 # TODO: Inherit from MarBot instead, and handle hardware_guild_id and hardware_user
 class SerialBot(discordbot.MarBot):
-    def __init__(self, port, baud) -> None:
+    def __init__(self, port: str, baud: int) -> None:
         discord.utils.setup_logging(
             handler=discord.utils.MISSING,
             formatter=discord.utils.MISSING,
@@ -113,7 +113,7 @@ class SerialBot(discordbot.MarBot):
             # TODO: Surely there's a callback for this.
             timeout = time.time() + 5
             while time.time() < timeout:
-                if self.voice_client and self.voice_client.is_connected():
+                if self.voice_client and self.voice_client.is_connected() and self.voice_client.channel == user.voice.channel:
                     break
                 time.sleep(0.1)
             else:
@@ -179,45 +179,34 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
     while not client.thread_done and not client.is_ready():
         time.sleep(0.1)
 
-    try:
-        while not client.thread_done:
-            try:
-                _log.info("Connecting to serial...")
-                with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
-                    flush(iface)
-                    data = ""
-                    _log.info("Serial ready!")
-                    while not client.thread_done:
-                        # TODO: Handle serial.serialutil.SerialException here for when the soundboard is unplugged and plugged back in
-                        rx_data = iface.readline().decode()
-                        data += rx_data
+    while not client.thread_done:
+        try:
+            _log.info("Connecting to serial...")
+            with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
+                flush(iface)
+                data = ""
+                _log.info("Serial ready!")
+                while not client.thread_done:
+                    # TODO: Handle serial.serialutil.SerialException here for when the soundboard is unplugged and plugged back in
+                    rx_data = iface.readline().decode()
+                    data += rx_data
 
-                        # Handle any flag changes that happened while we were reading data
-                        if client.thread_done:
-                            break   # type: ignore # This is reachable because thread_done is volatile
+                    # Handle any flag changes that happened while we were reading data
+                    if client.thread_done:
+                        break   # type: ignore # This is reachable because thread_done is volatile
 
-                        if not data:
-                            continue
+                    if not data:
+                        continue
 
-                        _log.debug("serial rx:", data.strip())
+                    _log.debug("serial rx:", data.strip())
 
-                        if "\n" in data:
-                            client.thread_handle_serial_message(data, loop)
-                            data = ""
-            except serial.serialutil.SerialException:
-                _log.warning("Can't talk to serial device. Retrying...")
-                time.sleep(5)
+                    if "\n" in data:
+                        client.thread_handle_serial_message(data, loop)
+                        data = ""
+        except serial.serialutil.SerialException:
+            _log.warning("Can't talk to serial device. Retrying...")
+            time.sleep(5)
 
-                if len(results) > 5:
-                    for result in results[:5]:
-                        result.cancel()
-                    results = results[:5]
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        for result in results:
-            result.cancel()
 
 if __name__ == "__main__":
     global loop
@@ -225,5 +214,8 @@ if __name__ == "__main__":
     asyncio.set_event_loop(loop)
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
-    with SerialBot(port="COM3", baud=115200) as client:
+    try:
+        with SerialBot(port="COM3", baud=115200) as client:
+            pass
+    except KeyboardInterrupt:
         pass
