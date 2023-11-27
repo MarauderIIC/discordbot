@@ -25,7 +25,7 @@ class TooManyMatches(KeyError):
 class LoggedInError(Exception):
     """ Not logged in """
 
-_log = logging.getLogger(__name__)
+_log = logging.getLogger()
 
 TypeUserAnywhere = Union[discord.Member, discord.User]
 
@@ -676,7 +676,7 @@ class MarBot(discord.Client):
                 except KeyError as exc:
                     candidates = []
                     for candidate in self.commands:
-                        print(candidate, "vs", unsplit_command)
+                        #print(candidate, "vs", unsplit_command)
                         if unsplit_command.startswith(candidate):
                             candidates.append(candidate)
 
@@ -752,18 +752,21 @@ def main(client: Optional[MarBot] = None, loop = None) -> None:
     async def main_task() -> None:
         await client.start(client.token)
 
+    debug = False
     loop_owner = False
     # Work around `await self.close()` crashing somewhere without giving a traceback.
     if loop is None:
         loop_owner = True
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop = asyncio.get_event_loop()
     futures = [asyncio.ensure_future(main_task())]
     try:
-        loop.run_until_complete(asyncio.gather(*futures))
+        loop.run_until_complete(asyncio.gather(*futures, return_exceptions=debug))
         print("Try done")
     except:
         future_logout = [asyncio.ensure_future(client.close())]
-        loop.run_until_complete(asyncio.gather(*future_logout))
+        loop.run_until_complete(asyncio.gather(*future_logout, return_exceptions=debug))
         print("Closed in exception")
     finally:
         if loop_owner:
