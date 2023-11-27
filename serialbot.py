@@ -16,16 +16,6 @@ import discordbot
 _log = logging.getLogger()
 
 
-def flush(iface: serial.Serial) -> None:
-    _log.info("Flushing serial...")
-    while True:
-        data = iface.read()
-        _log.debug(data.decode())
-        if not data:
-            break
-    _log.info("- End flush")
-
-
 class SerialChannel(discord.TextChannel):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         pass
@@ -186,7 +176,7 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
         try:
             _log.info("Connecting to serial...")
             with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
-                flush(iface)
+                iface.reset_input_buffer()
                 data = ""
                 _log.info("Serial ready!")
                 while not client.thread_done:
