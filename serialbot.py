@@ -203,7 +203,9 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
             if not warned:
                 _log.warning("Can't talk to serial device. Retrying...")
                 warned = True
-            time.sleep(3)
+            timeout = time.time() + 5
+            while time.time() < timeout and not client.thread_done:
+                time.sleep(0.5)
 
 
 if __name__ == "__main__":
