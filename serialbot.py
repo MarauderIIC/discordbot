@@ -64,7 +64,7 @@ class SerialBot(discordbot.MarBot):
         self.serial_user = "marauderiic"
         self.results: List[concurrent.futures.Future] = []  # type: ignore # There's only so much I can care about getting this typed
 
-        self.thread_done = False
+        self.thread_done = False  # Setting this flag to True tells thread_serial to stop.
         self.thread = threading.Thread(target=thread_serial, args=[self, port, baud])
 
     def thread_handle_serial_message(
@@ -163,9 +163,6 @@ class SerialBot(discordbot.MarBot):
         self.thread.join()
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
-
-
-done = False  # Setting this flag causes the main_serial thread to stop.
 
 
 def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
