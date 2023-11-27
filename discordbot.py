@@ -388,6 +388,15 @@ class MarBot(discord.Client):
             self.in_maintenance_mode = False
             await channel.send("Maintenance mode off")
 
+    async def optional_send(self, channel: Optional[discord.TextChannel], msg: str) -> None:
+        """
+        Send message 
+        """
+        if channel is None:
+            print(msg)
+        else:
+            await channel.send(msg)
+
     async def handle_play(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, args: List[str]
     ) -> None:
@@ -399,16 +408,19 @@ class MarBot(discord.Client):
         :param args: The first entry is the pre-configured key for the sound effect
             to send to voice. Excess arguments result in an error.
         """
+        await self.play_iface(user, channel, args)
+
+    async def play_iface(self, user: TypeUserAnywhere, channel: Optional[discord.TextChannel], args: List[str]) -> None:
 
         if not self.voice_client:
             print("No voice client")
-            await channel.send(
+            await self.optional_send(channel,
                 f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
             )
             return
 
         if len(args) > 1:
-            await channel.send(
+            await self.optional_send(channel,
                 f"{user.mention} I'm only expecting a single word to follow that command."
             )
             return
@@ -417,13 +429,13 @@ class MarBot(discord.Client):
         keyword = next(iter(args), None)
 
         if not keyword:
-            await channel.send(f"{user.mention} Did you specify something to play?")
+            await self.optional_send(channel, f"{user.mention} Did you specify something to play?")
             return
 
         try:
             play_file = self.sound_directory / self.files[keyword]
         except KeyError:
-            await channel.send(f"{user.mention} No file for {keyword}")
+            await self.optional_send(channel, f"{user.mention} No file for {keyword}")
             return
 
         print(f"Play '{keyword}' ==> {play_file}")
@@ -436,7 +448,7 @@ class MarBot(discord.Client):
             # Compare current channel to requestor's channel?
             self.voice_client.play(play_me)
         except discord.errors.ClientException:
-            await channel.send(f"{user.mention} I'm not in a voice channel")
+            await self.optional_send(channel, f"{user.mention} I'm not in a voice channel")
             print("...but I thought I was!")
             self.voice_client = None
 
@@ -571,7 +583,7 @@ class MarBot(discord.Client):
         return True
 
     @staticmethod
-    def is_channel_authorized(channel: discord.abc.MessageableChannel) -> bool:
+    def is_channel_authorized(channel: discord.abc.Messageable) -> bool:
         return "bot" in str(channel)
 
     def is_user_spam_blocked(self, user: TypeUserAnywhere) -> bool:
@@ -713,26 +725,37 @@ class MarBot(discord.Client):
         print("\tAllow: Default reason")
         await function(author, channel, args)
 
+    @staticmethod
+    def defaults() -> "MarBot":
+        """
+        Create a basic MarBot and set up the discord logging.
+        """
+        # Since we can't use run and await self.close() successfully, we have to set up logging ourselves.
+        discord.utils.setup_logging(
+            handler=discord.utils.MISSING,
+            formatter=discord.utils.MISSING,
+            level=discord.utils.MISSING,
+            root=False,
+        )
 
-def main() -> None:
-    # Since we can't use run and await self.close() successfully, we have to set up logging ourselves.
-    discord.utils.setup_logging(
-        handler=discord.utils.MISSING,
-        formatter=discord.utils.MISSING,
-        level=discord.utils.MISSING,
-        root=False,
-    )
+        intents = discord.Intents.default()
+        intents.message_content = True
+        client = MarBot(intents=intents)
+        return client
+
+def main(client: Optional[MarBot] = None, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+
+    if client is None:
+        client = MarBot.defaults()
 
     async def main_task() -> None:
         await client.start(client.token)
 
-    intents = discord.Intents.default()
-    intents.message_content = True
-    client = MarBot(intents=intents)
-    # client.run()
-
+    loop_owner = False
     # Work around `await self.close()` crashing somewhere without giving a traceback.
-    loop = asyncio.get_event_loop()
+    if loop is None:
+        loop_owner = True
+        loop = asyncio.get_event_loop()
     futures = [asyncio.ensure_future(main_task())]
     try:
         loop.run_until_complete(asyncio.gather(*futures))
@@ -742,7 +765,9 @@ def main() -> None:
         loop.run_until_complete(asyncio.gather(*future_logout))
         print("Closed in exception")
     finally:
-        loop.close()
+        if loop_owner:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
     print("Done")
 
 
