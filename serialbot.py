@@ -64,7 +64,9 @@ class SerialBot(discordbot.MarBot):
         self.serial_user = "marauderiic"
         self.results: List[concurrent.futures.Future] = []  # type: ignore # There's only so much I can care about getting this typed
 
-        self.thread_done = False  # Setting this flag to True tells thread_serial to stop.
+        self.thread_done = (
+            False  # Setting this flag to True tells thread_serial to stop.
+        )
         self.thread = threading.Thread(target=thread_serial, args=[self, port, baud])
 
     def thread_handle_serial_message(
@@ -113,7 +115,11 @@ class SerialBot(discordbot.MarBot):
             # TODO: Surely there's a callback for this.
             timeout = time.time() + 5
             while time.time() < timeout:
-                if self.voice_client and self.voice_client.is_connected() and self.voice_client.channel == user.voice.channel:
+                if (
+                    self.voice_client
+                    and self.voice_client.is_connected()
+                    and self.voice_client.channel == user.voice.channel
+                ):
                     break
                 time.sleep(0.1)
             else:
@@ -169,7 +175,7 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
     """
     Poll for lines in the serial data
     """
-    global loop # Putting this into SerialBot causes things to break... maybe the variable name overlaps with something?
+    global loop  # Putting this into SerialBot causes things to break... maybe the variable name overlaps with something?
 
     _log.info("Serial waiting for discord bot to come online")
     # TODO: Use on_ready instead.
@@ -190,7 +196,7 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
 
                     # Handle any flag changes that happened while we were reading data
                     if client.thread_done:
-                        break   # type: ignore # This is reachable because thread_done is volatile
+                        break  # type: ignore # This is reachable because thread_done is volatile
 
                     if not data:
                         continue
