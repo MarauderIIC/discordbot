@@ -767,7 +767,7 @@ def main(client: Optional[MarBot] = None, loop = None) -> None:
     except:
         future_logout = [asyncio.ensure_future(client.close())]
         loop.run_until_complete(asyncio.gather(*future_logout, return_exceptions=debug))
-        print("Closed in exception")
+        print("Closing")
     finally:
         if loop_owner:
             loop.run_until_complete(loop.shutdown_asyncgens())
