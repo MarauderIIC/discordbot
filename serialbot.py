@@ -172,12 +172,15 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
     while not client.thread_done and not client.is_ready():
         time.sleep(0.1)
 
+    warned = False  # Don't warn consecutively about reconnecting.
     while not client.thread_done:
         try:
-            _log.info("Connecting to serial...")
+            if not warned:
+                _log.info("Connecting to serial...")
             with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
                 iface.reset_input_buffer()
                 data = ""
+                warned = False
                 _log.info("Serial ready!")
                 while not client.thread_done:
                     # TODO: Handle serial.serialutil.SerialException here for when the soundboard is unplugged and plugged back in
@@ -197,8 +200,10 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
                         client.thread_handle_serial_message(data, loop)
                         data = ""
         except serial.serialutil.SerialException:
-            _log.warning("Can't talk to serial device. Retrying...")
-            time.sleep(5)
+            if not warned:
+                _log.warning("Can't talk to serial device. Retrying...")
+                warned = True
+            time.sleep(3)
 
 
 if __name__ == "__main__":
