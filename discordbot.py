@@ -7,6 +7,7 @@ import discord
 import os
 import pprint
 import random
+import shutil
 import sys
 import traceback
 import time
@@ -61,6 +62,7 @@ class MarBot(discord.Client):
             "join-me": self.handle_join_user,
             "leave-voice": self.handle_leave_voice,
             "restart": self.handle_restart,
+            "add": self.handle_add,
             "help": self.handle_help,
             "maintenance": self.handle_maintenance,
             "set-spam-timer": self.handle_set_spam_timer,
@@ -110,6 +112,7 @@ class MarBot(discord.Client):
             new_helps = dict(parser["helps"])
             new_priv_commands = dict(parser["priv_commands"])
             new_path = Path(parser["config"]["path"])
+            new_add_path = new_path / "to_add"
             new_prefix = parser["config"]["prefix"]
             new_token = parser["config"]["token"]
             new_admins = parser["admins"]["admins"]
@@ -137,11 +140,12 @@ class MarBot(discord.Client):
                     f"Unexpected command key '{key}'. Remove it or check its spelling."
                 )
 
-        self.prefix, self.files, self.sound_directory, self.helps = (
+        self.prefix, self.files, self.sound_directory, self.helps, self.add_path = (
             new_prefix,
             new_files,
             new_path,
             new_helps,
+            new_add_path,
         )
         self.admins = new_admins.split(",")
         print(f"Admins: {', '.join(self.admins)}")
@@ -312,7 +316,7 @@ class MarBot(discord.Client):
 
     async def handle_join_user(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
-    ) -> None:
+    ) -> bool:
         """
         Join the sender's voice channel.
 
@@ -322,11 +326,11 @@ class MarBot(discord.Client):
         """
         if not isinstance(user, discord.Member):
             await channel.send(f"{user.mention}, you must be in a server")
-            return
+            return False
         
         if not user.voice or not user.voice.channel:
             await channel.send(f"{user.mention}, you must be in a voice channel")
-            return
+            return False
 
         for member in self.get_all_members():
             permissions = user.voice.channel.permissions_for(member)
@@ -339,12 +343,21 @@ class MarBot(discord.Client):
             await channel.send(
                 f"{user.mention}, I am missing connect or speak permission for your channel"
             )
-            return
+            return False
 
         if not self.voice_client:
             self.voice_client = cast(discord.VoiceClient, await user.voice.channel.connect())
 
         await self.voice_client.move_to(user.voice.channel)
+
+        timeout = time.time() + 10
+        while self.voice_client.channel != user.voice.channel or not self.voice_client.is_connected():
+            time.sleep(0.1)
+            if time.time() >= timeout:
+                print("Timed out")
+                return False
+        print("Connected")
+        return True
 
     async def handle_leave_voice(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
@@ -388,7 +401,7 @@ class MarBot(discord.Client):
             self.in_maintenance_mode = False
             await channel.send("Maintenance mode off")
 
-    async def optional_send(self, channel: Optional[discord.TextChannel], msg: str) -> None:
+    async def optional_send(self, channel: Optional[Union[discord.TextChannel, discord.DMChannel]], msg: str) -> None:
         """
         Send message 
         """
@@ -414,10 +427,18 @@ class MarBot(discord.Client):
 
         if not self.voice_client:
             print("No voice client")
-            await self.optional_send(channel,
-                f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
-            )
-            return
+            if channel:
+                # Try to join the user automatically
+                if not await self.handle_join_user(user, channel, []) or not self.voice_client:
+                    await self.optional_send(channel,
+                        f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
+                    )
+                    return
+            else:
+                await self.optional_send(channel,
+                    f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
+                )
+                return
 
         if len(args) > 1:
             await self.optional_send(channel,
@@ -570,6 +591,62 @@ class MarBot(discord.Client):
         """
         if self.voice_client:
             self.voice_client.stop()
+
+    async def handle_add(self, user: TypeUserAnywhere, channel: discord.TextChannel, args: List[str]) -> None:
+        """
+        Handle remotely adding a new sound to the soundboard.
+
+        :param user: The user that sent the command.
+        :param channel: The channel to respond to (usually the one it was sent on).
+        :param args: The sound command to add.
+        """
+
+        # A lot of these messages are in-the-weeds; maybe I should DM the responses? It's awkward though because
+        # the user can't respond in DM.
+        
+        if len(args) != 1:
+            await self.optional_send(channel, f"{user.mention} Expected a single argument")
+            return
+
+        keyword = args[0]
+        keyword_fname = keyword + ".txt"
+
+        def is_in_add_path(fname):
+            test_path = (self.add_path / fname).resolve()
+            return test_path.parent == self.add_path.resolve()
+        
+        if not keyword.isalnum():
+            await self.optional_send(channel, f"{user.mention} The file named for the command must be alphanumeric only")
+            return
+        
+        if not is_in_add_path(keyword_fname):
+            await self.optional_send(channel, f"{user.mention} file to add must be in the add subdir")
+            return
+        
+        # Make sure the sound name isn't in use already.
+        if keyword in self.files:
+            await self.optional_send(channel, f"{user.mention} the keyword {keyword} is already taken")
+            return
+        
+        # Search the to_add subfolder for the mp3 to add and its accompanying text file that says what playlist name to use for it.
+        try:
+            with open((self.add_path / keyword_fname).resolve(), "rt") as fh:
+                mp3_fname = fh.readlines()[0].strip()
+        except FileNotFoundError:
+            await self.optional_send(channel, f"{user.mention} file to add must be in the add subdir")
+            return
+
+        if not is_in_add_path(mp3_fname):
+            await self.optional_send(channel, f"{user.mention} sound to add must be in the add subdir")
+            return
+        
+        self.files[keyword] = mp3_fname
+        try:
+            os.symlink((self.add_path / mp3_fname).resolve(), (self.sound_directory / mp3_fname).resolve())
+        except FileExistsError:
+            await self.optional_send(channel, f"{user.mention} that sound file already exists. I'm assigning {keyword} to it.")
+        else:
+            await self.optional_send(channel, f"{user.mention} sound added")
 
     def is_user_admin(self, user: Union[discord.User, discord.Member]) -> bool:
         """
