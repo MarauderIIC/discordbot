@@ -2,6 +2,7 @@ import concurrent.futures
 import logging
 import threading
 import asyncio
+import sys
 import time
 from types import TracebackType
 from typing import Any, List, Optional
@@ -76,6 +77,9 @@ class SerialBot(discordbot.MarBot):
 
         if loop is None:
             raise ValueError("No asyncio event loop")
+        
+        if serial_data == "QUIT_NOW":
+            return
 
         user = None
         for guild in self.guilds:
@@ -167,24 +171,26 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
     """
     global loop  # Putting this into SerialBot causes things to break... maybe the variable name overlaps with something?
 
+    #_log.setLevel(logging.DEBUG)
     _log.info("Serial waiting for discord bot to come online")
     # TODO: Use on_ready instead.
     while not client.thread_done and not client.is_ready():
         time.sleep(0.1)
 
     warned = False  # Don't warn consecutively about reconnecting.
+    last_upload_at = 0
+    state = 0
     while not client.thread_done:
         try:
             if not warned:
-                _log.info("Connecting to serial...")
+                _log.info("Connecting to serial %s...", port)
             with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
-                iface.reset_input_buffer()
+                iface.reset_input_buffer()  # Clear boot info
                 data = ""
                 warned = False
-                _log.info("Serial ready!")
                 while not client.thread_done:
                     # TODO: Handle serial.serialutil.SerialException here for when the soundboard is unplugged and plugged back in
-                    rx_data = iface.readline().decode()
+                    rx_data = iface.readline().decode(errors="replace")
                     data += rx_data
 
                     # Handle any flag changes that happened while we were reading data
@@ -194,12 +200,40 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
                     if not data:
                         continue
 
-                    _log.debug("serial rx:", data.strip())
+                    if data.startswith("~WARNING"):
+                        _log.warning("Serial rx: %s", data.strip())
+                    elif data.startswith("~ERROR"):
+                        _log.error("Serial rx: %s", data.strip())
+                    else:
+                        _log.debug("state %d, serial rx: '%s'", state, data)
 
-                    if "\n" in data:
-                        client.thread_handle_serial_message(data, loop)
+                    if "\n" in data:  # No matter what state we're in, clear the data if we got a full line.
+                        data = data.strip()
+                        if data == "~Waiting for sounds":
+                            if time.time() - last_upload_at < 5:
+                                _log.error("Sound board boot loop detected, bailing!")
+                                client.thread_done = True
+                                break
+
+                            serial_sounds = "\n".join(x for x in client.files.keys()).encode(encoding="ascii") + b"\n"
+                            iface.write((str(len(client.files.keys())) + "\n").encode(encoding="ascii"))
+                            _log.debug("Sent %s", (str(len(serial_sounds)) + "\n").encode(encoding="ascii"))
+                            iface.write(serial_sounds)
+                            _log.debug("Sent %s", serial_sounds)
+                            _log.info("Serial ready!")
+                            last_upload_at = time.time()
+                            iface.reset_input_buffer()  # Maybe we got boot info again
+                            state = 1
+                        elif data == "~Soundboard ready":
+                            if state == 0:
+                                _log.info("Soundboard is already ready! Be sure to restart it if your local sound files have changed.")
+                            state = 2
+
+                        if not data.startswith("~"):
+                            client.thread_handle_serial_message(data, loop)
                         data = ""
-        except serial.serialutil.SerialException:
+
+        except serial.serialutil.SerialException as exc:
             if not warned:
                 _log.warning("Can't talk to serial device. Retrying...")
                 warned = True
