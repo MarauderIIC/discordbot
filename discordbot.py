@@ -7,13 +7,12 @@ import discord
 import os
 import pprint
 import random
-import shutil
 import sys
 import traceback
 import time
 
 from pathlib import Path
-from typing import Any, cast, Coroutine, List, Dict, Optional, Callable, Union
+from typing import Any, cast, Coroutine, List, Dict, Optional, Callable, Tuple, Union
 
 import psutil
 
@@ -89,8 +88,53 @@ class MarBot(discord.Client):
         self.admins: List[str] = []
 
         self.reload_config(load_token=True)
+        print("Added dynamic files:", self.add_all_dynamic_files())
 
         print("Initialized")
+
+    def add_all_dynamic_files(self) -> List[str]:
+        added_list = []
+        for keyword_fname in os.listdir(self.add_path):
+            if not keyword_fname.endswith(".txt"):
+                continue
+            keyword = keyword_fname.replace(".txt", "")
+            added, _ = self.add_a_sound(keyword, keyword_fname)
+            if added:
+                added_list.append(keyword)
+        return added_list
+
+    def add_a_sound(self, keyword: str, keyword_fname: str) -> Tuple[bool, str]:
+        def is_in_add_path(fname: str) -> bool:
+            test_path = (self.add_path / fname).resolve()
+            return test_path.parent == self.add_path.resolve()
+        
+        if not keyword.isalnum():
+            return False, f"The file named for the command must be alphanumeric only, but it's '{keyword}'"
+
+        if not is_in_add_path(keyword_fname):
+            return False, f"txt to add must be in the add subdir"
+        
+        # Make sure the sound name isn't in use already.
+        if keyword in self.files:
+            return False, f"The keyword {keyword} is already taken"
+        
+        # Search the to_add subfolder for the mp3 to add and its accompanying text file that says what playlist name to use for it.
+        try:
+            with open((self.add_path / keyword_fname).resolve(), "rt") as fh:
+                mp3_fname = fh.readlines()[0].strip()
+        except FileNotFoundError:
+            return False, f"mp3 to add must be in the add subdir"
+
+        if not is_in_add_path(mp3_fname):
+           return False, "mp3 sound to add must be in the add subdir"
+        
+        self.files[keyword] = mp3_fname
+        try:
+            os.symlink((self.add_path / mp3_fname).resolve(), (self.sound_directory / mp3_fname).resolve())
+        except FileExistsError:
+            return True, f"that sound file already exists. I'm assigning {keyword} to it."
+        else:
+            return True, f"sound added"
 
     def reload_config(
         self, config: Optional[str] = None, load_token: bool = False
@@ -214,7 +258,7 @@ class MarBot(discord.Client):
             self.commands.get(x) == self.commands.get(candidates[0]) for x in candidates
         )
 
-    def get_all_aliases_for(self, command: str) -> List[str]:
+    def get_all_aliases_for(self, command: str, include_priv: bool) -> List[str]:
         if not command:
             return []
 
@@ -223,6 +267,12 @@ class MarBot(discord.Client):
             for x in self.commands
             if self.commands.get(x) == self.commands.get(command)
         ]
+        if include_priv:
+            candidates += [
+                x
+                for x in self.priv_commands
+                if self.priv_commands.get(x) == self.priv_commands.get(command)
+            ]
         return candidates
 
     async def handle_reload_config(
@@ -293,11 +343,16 @@ class MarBot(discord.Client):
             await channel.send(msg)
             return
 
-        if keyword not in self.commands:
-            await channel.send(f"No such user command {keyword}")
-            return
+        if not self.is_user_admin(user):
+            if keyword not in self.commands:
+                await channel.send(f"No such user command {keyword}")
+                return
+        else:
+            if keyword not in self.commands and keyword not in self.priv_commands:
+                await channel.send(f"No such user or admin command {keyword}")
+                return
 
-        aliases = self.get_all_aliases_for(keyword)
+        aliases = self.get_all_aliases_for(keyword, self.is_user_admin(user))
         for alias in aliases:
             if alias in self.helps:
                 await channel.send(
@@ -305,7 +360,7 @@ class MarBot(discord.Client):
                         cmd=", ".join(
                             [
                                 self.prefix + alias
-                                for alias in self.get_all_aliases_for(keyword)
+                                for alias in aliases
                             ]
                         )
                     )
@@ -316,7 +371,7 @@ class MarBot(discord.Client):
 
     async def handle_join_user(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
-    ) -> bool:
+    ) -> None:
         """
         Join the sender's voice channel.
 
@@ -326,11 +381,11 @@ class MarBot(discord.Client):
         """
         if not isinstance(user, discord.Member):
             await channel.send(f"{user.mention}, you must be in a server")
-            return False
+            return
         
         if not user.voice or not user.voice.channel:
             await channel.send(f"{user.mention}, you must be in a voice channel")
-            return False
+            return
 
         for member in self.get_all_members():
             permissions = user.voice.channel.permissions_for(member)
@@ -343,7 +398,7 @@ class MarBot(discord.Client):
             await channel.send(
                 f"{user.mention}, I am missing connect or speak permission for your channel"
             )
-            return False
+            return
 
         if not self.voice_client:
             self.voice_client = cast(discord.VoiceClient, await user.voice.channel.connect())
@@ -355,9 +410,9 @@ class MarBot(discord.Client):
             time.sleep(0.1)
             if time.time() >= timeout:
                 print("Timed out")
-                return False
+                return
         print("Connected")
-        return True
+        return
 
     async def handle_leave_voice(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
@@ -484,7 +539,7 @@ class MarBot(discord.Client):
         :param unused_args: Unused.
         """
         play_cmd = ""
-        play_cmds = self.get_all_aliases_for("play")
+        play_cmds = self.get_all_aliases_for("play", False)
         try:
             play_cmd = play_cmds[0]
         except IndexError:
@@ -605,48 +660,23 @@ class MarBot(discord.Client):
         # the user can't respond in DM.
         
         if len(args) != 1:
-            await self.optional_send(channel, f"{user.mention} Expected a single argument")
+            await self.optional_send(channel, f"{user.mention} Expected a single argument (either 'all' or the name of a text file)")
             return
 
         keyword = args[0]
         keyword_fname = keyword + ".txt"
 
-        def is_in_add_path(fname):
-            test_path = (self.add_path / fname).resolve()
-            return test_path.parent == self.add_path.resolve()
-        
-        if not keyword.isalnum():
-            await self.optional_send(channel, f"{user.mention} The file named for the command must be alphanumeric only")
-            return
-        
-        if not is_in_add_path(keyword_fname):
-            await self.optional_send(channel, f"{user.mention} file to add must be in the add subdir")
-            return
-        
-        # Make sure the sound name isn't in use already.
-        if keyword in self.files:
-            await self.optional_send(channel, f"{user.mention} the keyword {keyword} is already taken")
-            return
-        
-        # Search the to_add subfolder for the mp3 to add and its accompanying text file that says what playlist name to use for it.
-        try:
-            with open((self.add_path / keyword_fname).resolve(), "rt") as fh:
-                mp3_fname = fh.readlines()[0].strip()
-        except FileNotFoundError:
-            await self.optional_send(channel, f"{user.mention} file to add must be in the add subdir")
-            return
-
-        if not is_in_add_path(mp3_fname):
-            await self.optional_send(channel, f"{user.mention} sound to add must be in the add subdir")
-            return
-        
-        self.files[keyword] = mp3_fname
-        try:
-            os.symlink((self.add_path / mp3_fname).resolve(), (self.sound_directory / mp3_fname).resolve())
-        except FileExistsError:
-            await self.optional_send(channel, f"{user.mention} that sound file already exists. I'm assigning {keyword} to it.")
+        if keyword == "all":
+            added_list = self.add_all_dynamic_files()
+            if added_list:
+                await self.optional_send(channel, f"{user.mention} successfully added {added_list}")
+            else:
+                await self.optional_send(channel, f"{user.mention} nothing to add")
         else:
-            await self.optional_send(channel, f"{user.mention} sound added")
+            _, msg = self.add_a_sound(keyword, keyword_fname)
+            if msg:
+                await self.optional_send(channel, f"{user.mention} {msg}")
+
 
     def is_user_admin(self, user: Union[discord.User, discord.Member]) -> bool:
         """
