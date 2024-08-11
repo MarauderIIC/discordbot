@@ -549,21 +549,10 @@ class MarBot(discord.Client):
         await channel.send(
             f"{user.mention} Here are the files for {self.prefix}{play_cmd}:"
         )
-        printable = pprint.pformat(self.files)
-
-        printable = printable.replace(".mp3", "")
-        printable = printable.replace("\n '", "\n")  # 'key': 'value', -> key': 'value',
-        printable = printable.replace("': ", ": ")  # key': 'value' -> key: 'value',
-        printable = printable.replace(": '", ": ")  # key: 'value' -> key: value',
-        printable = printable.replace("',", ",")  # key: value', -> key: value,
-        printable = printable.replace(
-            '"', ""
-        )  # Values with apostrophes in them wind up quoted - remove those too
-        printable = printable.replace("{'", "")
-        printable = printable.replace('{"', "")
-        printable = printable.replace("'}", "")
-        printable = printable.replace('"}', "")
-
+        printable = ""
+        for key, value in self.files.items():
+            printable += f"{key}: {value.replace('.mp3', '')}\n"
+ 
         if len(printable) > 2000:
             sendable = ""
             for line in printable.splitlines():
