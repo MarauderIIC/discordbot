@@ -358,6 +358,7 @@ class MarBot(discord.Client):
                 await channel.send(
                     self.helps[alias].format(
                         cmd=", ".join(
+                            # Print all the aliases in the help
                             [
                                 self.prefix + alias
                                 for alias in aliases
@@ -458,7 +459,7 @@ class MarBot(discord.Client):
 
     async def optional_send(self, channel: Optional[Union[discord.TextChannel, discord.DMChannel]], msg: str) -> None:
         """
-        Send message 
+        Send message if channel exists, otherwise just print it.
         """
         if channel is None:
             print(msg)
@@ -553,10 +554,12 @@ class MarBot(discord.Client):
         for key, value in self.files.items():
             printable += f"{key}: {value.replace('.mp3', '')}\n"
  
-        if len(printable) > 2000:
+        # Discord has a maximum message length. Don't trip on it.
+        discord_max_msg_len = 2000
+        if len(printable) > discord_max_msg_len:
             sendable = ""
             for line in printable.splitlines():
-                if len(sendable + line) > 2000:
+                if len(sendable + line) > discord_max_msg_len:
                     await channel.send(f"{sendable}")
                     sendable = ""
                 sendable += line + "\n"
