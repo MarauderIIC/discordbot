@@ -22,8 +22,10 @@ class TooManyMatches(KeyError):
         self.matches = matches
         super().__init__()
 
+
 class LoggedInError(Exception):
-    """ Not logged in """
+    """Not logged in"""
+
 
 _log = logging.getLogger()
 
@@ -38,9 +40,7 @@ class MarBot(discord.Client):
     # The magic string used to disable a command in the configuration file.
     CMD_DISABLED = "DISABLED"
 
-    def __init__(
-        self, config: Path = Path("config.ini"), **kwargs: discord.Intents
-    ) -> None:
+    def __init__(self, config: Path = Path("config.ini"), **kwargs: discord.Intents) -> None:
         """
         Create a new bot instance.
 
@@ -69,9 +69,7 @@ class MarBot(discord.Client):
             "show-admins": self.handle_show_admins,
         }
         # Map the command aliases to handlers
-        self.commands: Dict[
-            str, TypeHandlerWithArgs
-        ] = {}
+        self.commands: Dict[str, TypeHandlerWithArgs] = {}
         # Map the command names to help strings
         self.helps: Dict[str, str] = {}
         # Map the privileged command names in the .ini file's keys to handlers
@@ -107,17 +105,20 @@ class MarBot(discord.Client):
         def is_in_add_path(fname: str) -> bool:
             test_path = (self.add_path / fname).resolve()
             return test_path.parent == self.add_path.resolve()
-        
+
         if not keyword.isalnum():
-            return False, f"The file named for the command must be alphanumeric only, but it's '{keyword}'"
+            return (
+                False,
+                f"The file named for the command must be alphanumeric only, but it's '{keyword}'",
+            )
 
         if not is_in_add_path(keyword_fname):
             return False, f"txt to add must be in the add subdir"
-        
+
         # Make sure the sound name isn't in use already.
         if keyword in self.files:
             return False, f"The keyword {keyword} is already taken"
-        
+
         # Search the to_add subfolder for the mp3 to add and its accompanying text file that says what playlist name to use for it.
         try:
             with open((self.add_path / keyword_fname).resolve(), "rt") as fh:
@@ -126,19 +127,19 @@ class MarBot(discord.Client):
             return False, f"mp3 to add must be in the add subdir"
 
         if not is_in_add_path(mp3_fname):
-           return False, "mp3 sound to add must be in the add subdir"
-        
+            return False, "mp3 sound to add must be in the add subdir"
+
         self.files[keyword] = mp3_fname
         try:
-            os.symlink((self.add_path / mp3_fname).resolve(), (self.sound_directory / mp3_fname).resolve())
+            os.symlink(
+                (self.add_path / mp3_fname).resolve(), (self.sound_directory / mp3_fname).resolve()
+            )
         except FileExistsError:
             return True, f"that sound file already exists. I'm assigning {keyword} to it."
         else:
             return True, f"sound added"
 
-    def reload_config(
-        self, config: Optional[str] = None, load_token: bool = False
-    ) -> None:
+    def reload_config(self, config: Optional[str] = None, load_token: bool = False) -> None:
         """
         Reload the configuration file.
 
@@ -167,9 +168,7 @@ class MarBot(discord.Client):
 
         for key in new_commands:
             if key in new_priv_commands:
-                raise KeyError(
-                    f"Command key {key} is present in both commands and priv_commands"
-                )
+                raise KeyError(f"Command key {key} is present in both commands and priv_commands")
 
         for key in self.HANDLERS.keys():
             if key not in new_commands.keys() and key not in new_priv_commands.keys():
@@ -180,9 +179,7 @@ class MarBot(discord.Client):
 
         for key in list(new_commands.keys()) + list(new_priv_commands.keys()):
             if key not in self.HANDLERS.keys():
-                raise KeyError(
-                    f"Unexpected command key '{key}'. Remove it or check its spelling."
-                )
+                raise KeyError(f"Unexpected command key '{key}'. Remove it or check its spelling.")
 
         self.prefix, self.files, self.sound_directory, self.helps, self.add_path = (
             new_prefix,
@@ -237,9 +234,7 @@ class MarBot(discord.Client):
             self.priv_commands["restart"] = self.handle_restart
 
         print("Privileged command mapping")
-        pprint.pprint(
-            {key: value.__name__ for key, value in self.priv_commands.items()}
-        )
+        pprint.pprint({key: value.__name__ for key, value in self.priv_commands.items()})
         print("Command mapping")
         pprint.pprint({key: value.__name__ for key, value in self.commands.items()})
 
@@ -254,18 +249,14 @@ class MarBot(discord.Client):
     def are_equivalent_commands(self, candidates: List[str]) -> bool:
         if not candidates:
             return False
-        return all(
-            self.commands.get(x) == self.commands.get(candidates[0]) for x in candidates
-        )
+        return all(self.commands.get(x) == self.commands.get(candidates[0]) for x in candidates)
 
     def get_all_aliases_for(self, command: str, include_priv: bool) -> List[str]:
         if not command:
             return []
 
         candidates = [
-            x
-            for x in self.commands
-            if self.commands.get(x) == self.commands.get(command)
+            x for x in self.commands if self.commands.get(x) == self.commands.get(command)
         ]
         if include_priv:
             candidates += [
@@ -316,9 +307,7 @@ class MarBot(discord.Client):
     async def handle_dump_spam_status(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, args: List[str]
     ) -> None:
-        printable = pprint.pformat(
-            {str(k): str(v) for k, v in self.spam_protect.items()}
-        )
+        printable = pprint.pformat({str(k): str(v) for k, v in self.spam_protect.items()})
         await channel.send(
             f"Current time: {int(time.time())} Current spam protection status:\n{printable}"
         )
@@ -366,10 +355,7 @@ class MarBot(discord.Client):
                     self.helps[alias].format(
                         cmd=", ".join(
                             # Print all the aliases in the help
-                            [
-                                self.prefix + alias
-                                for alias in aliases
-                            ]
+                            [self.prefix + alias for alias in aliases]
                         )
                     )
                 )
@@ -390,11 +376,11 @@ class MarBot(discord.Client):
         if not isinstance(user, discord.Member):
             await channel.send(f"{user.mention}, you must be in a server")
             return
-        
+
         if not user.voice or not user.voice.channel:
             await channel.send(f"{user.mention}, you must be in a voice channel")
             return
-        
+
         for member in self.get_all_members():
             permissions = user.voice.channel.permissions_for(member)
             print(
@@ -410,12 +396,16 @@ class MarBot(discord.Client):
 
         if not self.voice_client:
             await self.disconnect_voice()
-            self.voice_client = cast(discord.VoiceClient, await user.voice.channel.connect(timeout=10))
+            self.voice_client = cast(
+                discord.VoiceClient, await user.voice.channel.connect(timeout=10)
+            )
 
         await self.voice_client.move_to(user.voice.channel)
 
         timeout = time.time() + 10
-        while self.voice_client.channel != user.voice.channel or not self.voice_client.is_connected():
+        while (
+            self.voice_client.channel != user.voice.channel or not self.voice_client.is_connected()
+        ):
             time.sleep(0.1)
             if time.time() >= timeout:
                 print("Timed out")
@@ -466,7 +456,9 @@ class MarBot(discord.Client):
             self.in_maintenance_mode = False
             await channel.send("Maintenance mode off")
 
-    async def optional_send(self, channel: Optional[Union[discord.TextChannel, discord.DMChannel]], msg: str) -> None:
+    async def optional_send(
+        self, channel: Optional[Union[discord.TextChannel, discord.DMChannel]], msg: str
+    ) -> None:
         """
         Send message if channel exists, otherwise just print it.
         """
@@ -488,25 +480,29 @@ class MarBot(discord.Client):
         """
         await self.play_iface(user, channel, args)
 
-    async def play_iface(self, user: TypeUserAnywhere, channel: Optional[discord.TextChannel], args: List[str]) -> None:
+    async def play_iface(
+        self, user: TypeUserAnywhere, channel: Optional[discord.TextChannel], args: List[str]
+    ) -> None:
 
         if channel:
             # Try to join the user automatically
             await self.handle_join_user(user, channel, [])
             if not self.voice_client:
-                await self.optional_send(channel,
-                    f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
+                await self.optional_send(
+                    channel,
+                    f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)",
                 )
                 return
         else:
-            await self.optional_send(channel,
-                f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
+            await self.optional_send(
+                channel,
+                f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)",
             )
             return
 
         if len(args) > 1:
-            await self.optional_send(channel,
-                f"{user.mention} I'm only expecting a single word to follow that command."
+            await self.optional_send(
+                channel, f"{user.mention} I'm only expecting a single word to follow that command."
             )
             return
 
@@ -555,13 +551,11 @@ class MarBot(discord.Client):
             await channel.send(f"{user.mention}: The play command is not available")
             return
 
-        await channel.send(
-            f"{user.mention} Here are the files for {self.prefix}{play_cmd}:"
-        )
+        await channel.send(f"{user.mention} Here are the files for {self.prefix}{play_cmd}:")
         printable = ""
         for key, value in self.files.items():
             printable += f"{key}: {value.replace('.mp3', '')}\n"
- 
+
         # Discord has a maximum message length. Don't trip on it.
         discord_max_msg_len = 2000
         if len(printable) > discord_max_msg_len:
@@ -647,7 +641,9 @@ class MarBot(discord.Client):
         if self.voice_client:
             self.voice_client.stop()
 
-    async def handle_add(self, user: TypeUserAnywhere, channel: discord.TextChannel, args: List[str]) -> None:
+    async def handle_add(
+        self, user: TypeUserAnywhere, channel: discord.TextChannel, args: List[str]
+    ) -> None:
         """
         Handle remotely adding a new sound to the soundboard.
 
@@ -658,9 +654,12 @@ class MarBot(discord.Client):
 
         # A lot of these messages are in-the-weeds; maybe I should DM the responses? It's awkward though because
         # the user can't respond in DM.
-        
+
         if len(args) != 1:
-            await self.optional_send(channel, f"{user.mention} Expected a single argument (either 'all' or the name of a text file)")
+            await self.optional_send(
+                channel,
+                f"{user.mention} Expected a single argument (either 'all' or the name of a text file)",
+            )
             return
 
         keyword = args[0]
@@ -676,7 +675,6 @@ class MarBot(discord.Client):
             _, msg = self.add_a_sound(keyword, keyword_fname)
             if msg:
                 await self.optional_send(channel, f"{user.mention} {msg}")
-
 
     def is_user_admin(self, user: Union[discord.User, discord.Member]) -> bool:
         """
@@ -719,7 +717,7 @@ class MarBot(discord.Client):
         """
         if self.user is None:
             raise LoggedInError("Not logged in, but discord is reporting ready")
-        
+
         print("Logged in as %s %s" % (self.user.name, self.user.id))
 
     async def on_message(self, message: discord.Message) -> None:
@@ -738,7 +736,9 @@ class MarBot(discord.Client):
         command = None
 
         if not isinstance(channel, discord.TextChannel):
-            await author.send(f"{author.mention}, I can't receive commands in {channel} because it's not a text channel")
+            await author.send(
+                f"{author.mention}, I can't receive commands in {channel} because it's not a text channel"
+            )
             return
 
         if content.startswith(self.prefix):
@@ -760,9 +760,7 @@ class MarBot(discord.Client):
         print(f"{author}@{channel}: {log_content} ==> {command}")
 
         if not self.is_channel_authorized(channel):
-            await author.send(
-                f"{author.mention} I can't receive commands in channel {channel}"
-            )
+            await author.send(f"{author.mention} I can't receive commands in channel {channel}")
             return
 
         try:
@@ -783,7 +781,7 @@ class MarBot(discord.Client):
                 except KeyError as exc:
                     candidates = []
                     for candidate in self.commands:
-                        #print(candidate, "vs", unsplit_command)
+                        # print(candidate, "vs", unsplit_command)
                         if unsplit_command.startswith(candidate):
                             candidates.append(candidate)
 
@@ -803,9 +801,7 @@ class MarBot(discord.Client):
                     function = self.commands[command]
 
         except TooManyMatches as exc:
-            await channel.send(
-                f"{author.mention}, which of {' '.join(exc.matches)} do you mean?"
-            )
+            await channel.send(f"{author.mention}, which of {' '.join(exc.matches)} do you mean?")
             return
         except (KeyError, PermissionError):
             await channel.send(f"{author.mention}, no such command '{command}'")
@@ -832,6 +828,7 @@ class MarBot(discord.Client):
         print("\tAllow: Default reason")
         await function(author, channel, args)
 
+
 def create() -> MarBot:
     """
     Create a basic MarBot and set up the discord logging.
@@ -851,7 +848,8 @@ def create() -> MarBot:
     # client.run()
     return client
 
-def main(client: Optional[MarBot] = None, loop = None) -> None:
+
+def main(client: Optional[MarBot] = None, loop=None) -> None:
 
     if client is None:
         client = create()
