@@ -275,6 +275,13 @@ class MarBot(discord.Client):
             ]
         return candidates
 
+    async def disconnect_voice(self):
+        try:
+            if self.voice_client is not None:
+                await self.voice_client.disconnect()
+        finally:
+            self.voice_client = None
+
     async def handle_reload_config(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
     ) -> None:
@@ -387,7 +394,7 @@ class MarBot(discord.Client):
         if not user.voice or not user.voice.channel:
             await channel.send(f"{user.mention}, you must be in a voice channel")
             return
-
+        
         for member in self.get_all_members():
             permissions = user.voice.channel.permissions_for(member)
             print(
@@ -402,7 +409,8 @@ class MarBot(discord.Client):
             return
 
         if not self.voice_client:
-            self.voice_client = cast(discord.VoiceClient, await user.voice.channel.connect())
+            await self.disconnect_voice()
+            self.voice_client = cast(discord.VoiceClient, await user.voice.channel.connect(timeout=10))
 
         await self.voice_client.move_to(user.voice.channel)
 
@@ -411,6 +419,7 @@ class MarBot(discord.Client):
             time.sleep(0.1)
             if time.time() >= timeout:
                 print("Timed out")
+                await self.disconnect_voice()
                 return
         print("Connected")
         return
@@ -431,7 +440,7 @@ class MarBot(discord.Client):
             # Try anyway
 
         try:
-            await self.voice_client.disconnect()    # type: ignore # eafp
+            await self.disconnect_voice()
         except AttributeError:
             print("Tried to disconnect, but no client to use")
             traceback.print_exc()
@@ -481,20 +490,19 @@ class MarBot(discord.Client):
 
     async def play_iface(self, user: TypeUserAnywhere, channel: Optional[discord.TextChannel], args: List[str]) -> None:
 
-        if not self.voice_client:
-            print("No voice client")
-            if channel:
-                # Try to join the user automatically
-                if not await self.handle_join_user(user, channel, []) or not self.voice_client:
-                    await self.optional_send(channel,
-                        f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
-                    )
-                    return
-            else:
+        if channel:
+            # Try to join the user automatically
+            await self.handle_join_user(user, channel, [])
+            if not self.voice_client:
                 await self.optional_send(channel,
                     f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
                 )
                 return
+        else:
+            await self.optional_send(channel,
+                f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)"
+            )
+            return
 
         if len(args) > 1:
             await self.optional_send(channel,
