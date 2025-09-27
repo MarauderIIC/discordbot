@@ -2,7 +2,6 @@ import concurrent.futures
 import logging
 import threading
 import asyncio
-import sys
 import time
 from types import TracebackType
 from typing import Any, List, Optional
@@ -171,7 +170,7 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
     """
     global loop  # Putting this into SerialBot causes things to break... maybe the variable name overlaps with something?
 
-    #_log.setLevel(logging.DEBUG)
+    # _log.setLevel(logging.DEBUG)
     _log.info("Serial waiting for discord bot to come online")
     # TODO: Use on_ready instead.
     while not client.thread_done and not client.is_ready():
@@ -184,7 +183,7 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
         try:
             if not warned:
                 _log.info("Connecting to serial %s...", port)
-            with serial.Serial(port=port, baudrate=baud, timeout=1) as iface:
+            with serial.Serial(port=port, baudrate=baud, timeout=2) as iface:
                 iface.reset_input_buffer()  # Clear boot info
                 data = ""
                 warned = False
@@ -210,16 +209,23 @@ def thread_serial(client: SerialBot, port: str, baud: int = 115200) -> None:
                     if "\n" in data:  # No matter what state we're in, clear the data if we got a full line.
                         data = data.strip()
                         if data == "~Waiting for sounds":
-                            if time.time() - last_upload_at < 5:
+                            if last_upload_at and time.time() - last_upload_at < 5:
                                 _log.error("Sound board boot loop detected, bailing!")
                                 client.thread_done = True
                                 break
 
-                            serial_sounds = "\n".join(x for x in client.files.keys()).encode(encoding="ascii") + b"\n"
                             iface.write((str(len(client.files.keys())) + "\n").encode(encoding="ascii"))
-                            _log.debug("Sent %s", (str(len(serial_sounds)) + "\n").encode(encoding="ascii"))
-                            iface.write(serial_sounds)
-                            _log.debug("Sent %s", serial_sounds)
+                            serial_sounds = "\n".join(x for x in client.files.keys()).encode(encoding="ascii") + b"\n"
+
+                            step = 300 # Easier than checking for responses from the device.
+                            for chunk in range(0, len(serial_sounds), step):
+                                iface.write(serial_sounds[chunk:chunk+step])
+                                _log.debug("Sent %s" % serial_sounds[chunk:chunk+step])
+                                time.sleep(0.25)  # Throttle
+                            # _log.debug("Sent %s", (str(len(client.files.keys())) + "\n").encode(encoding="ascii"))
+                            # iface.write(serial_sounds)
+                            # _log.debug("Sent %s", serial_sounds)
+                            time.sleep(0.25)  # One more wait in case the device is still sending us responses.
                             _log.info("Serial ready!")
                             last_upload_at = time.time()
                             iface.reset_input_buffer()  # Maybe we got boot info again
