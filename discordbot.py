@@ -10,11 +10,15 @@ import random
 import sys
 import traceback
 import time
+import warnings
 
 from pathlib import Path
-from typing import Any, cast, Coroutine, List, Dict, Optional, Callable, Tuple, Union
+from typing import Any, Coroutine, List, Dict, Optional, Callable, Tuple, Union
 
 import psutil
+
+# Yep, sound files take time to play, and reconnecting takes a while too.
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class TooManyMatches(KeyError):
@@ -105,6 +109,9 @@ class MarBot(discord.Client):
         def is_in_add_path(fname: str) -> bool:
             test_path = (self.add_path / fname).resolve()
             return test_path.parent == self.add_path.resolve()
+
+        keyword = keyword.lower()
+        keyword_fname = keyword_fname.lower()
 
         if not keyword.isalnum():
             return (
@@ -269,7 +276,7 @@ class MarBot(discord.Client):
     async def disconnect_voice(self):
         try:
             if self.voice_client is not None:
-                await self.voice_client.disconnect()
+                await self.voice_client.disconnect(force=True)
         finally:
             self.voice_client = None
 
@@ -395,10 +402,18 @@ class MarBot(discord.Client):
             return
 
         if not self.voice_client:
-            await self.disconnect_voice()
-            self.voice_client = cast(
-                discord.VoiceClient, await user.voice.channel.connect(timeout=10)
-            )
+            try:
+                # Try to remove the ghost when discord.py joins the channel but can't connect to voice.
+                await self.disconnect_voice()
+                self.voice_client = await user.voice.channel.connect(timeout=2, reconnect=True)
+            except:  # I don't care what the exception is.  # noqa: E722
+                try:
+                    # Try really hard to clean up
+                    await self.disconnect_voice()
+                except:  # noqa: E722
+                    pass
+                print("Can't connect")
+                return
 
         await self.voice_client.move_to(user.voice.channel)
 
@@ -425,10 +440,8 @@ class MarBot(discord.Client):
         :param unused_args: Unused.
         """
 
-        if not self.voice_client:
-            await channel.send(f"{user.mention}, I'm not connected to voice")
-            # Try anyway
-
+        # Don't message about not being connected to voice when we try to leave voice,
+        # it's just annoying.
         try:
             await self.disconnect_voice()
         except AttributeError:
@@ -483,20 +496,19 @@ class MarBot(discord.Client):
     async def play_iface(
         self, user: TypeUserAnywhere, channel: Optional[discord.TextChannel], args: List[str]
     ) -> None:
-
         if channel:
             # Try to join the user automatically
             await self.handle_join_user(user, channel, [])
             if not self.voice_client:
                 await self.optional_send(
                     channel,
-                    f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)",
+                    f"{user.mention} I'm not in a voice channel, or voice failed to connect (wait 10s, then try !leave-voice and !join-me?)",
                 )
                 return
         else:
             await self.optional_send(
                 channel,
-                f"{user.mention} I'm not in a voice channel (try !leave-voice and !join-me?)",
+                f"{user.mention} I'm not in a voice channel, or voice failed to connect (wait 10s, then try !leave-voice and !join-me?)",
             )
             return
 
@@ -516,7 +528,7 @@ class MarBot(discord.Client):
         try:
             play_file = self.sound_directory / self.files[keyword]
         except KeyError:
-            await self.optional_send(channel, f"{user.mention} No file for {keyword}")
+            await self.optional_send(channel, f"{user.mention} No file for '{keyword}'")
             return
 
         print(f"Play '{keyword}' ==> {play_file}")
