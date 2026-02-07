@@ -12,6 +12,7 @@ import traceback
 import time
 import warnings
 
+from discord.ext import tasks
 from pathlib import Path
 from typing import Any, Coroutine, List, Dict, Optional, Callable, Tuple, Union
 
@@ -55,6 +56,7 @@ class MarBot(discord.Client):
         self.config = config
         self.voice_client: Optional[discord.VoiceClient] = None
         self.token = ""
+        self.alone_in_voice_since: Optional[float] = None
         # Map the actual command names to handlers
         self.HANDLERS: Dict[str, TypeHandlerWithArgs] = {
             "d20": self.handle_d20,
@@ -279,6 +281,7 @@ class MarBot(discord.Client):
                 await self.voice_client.disconnect(force=True)
         finally:
             self.voice_client = None
+            self.alone_in_voice_since = None
 
     async def handle_reload_config(
         self, user: TypeUserAnywhere, channel: discord.TextChannel, unused_args: List[str]
@@ -320,9 +323,9 @@ class MarBot(discord.Client):
         )
 
     async def handle_help(
-        self,
-        user: TypeUserAnywhere,
-        channel: discord.TextChannel,
+        self, 
+        user: TypeUserAnywhere, 
+        channel: discord.TextChannel, 
         args: List[str],
     ) -> None:
         """
@@ -602,6 +605,7 @@ class MarBot(discord.Client):
         """
         print(f"Restarting- {sys.executable}")
         print(f"Args: {sys.argv} -- {os.path.abspath(__file__)}")
+        self.check_voice_channel_activity.cancel()
         await self.close()
         print("Self closed OK")
         self.do_restart()
@@ -723,6 +727,34 @@ class MarBot(discord.Client):
         self.spam_timers[user] = to_add
         return False
 
+    @tasks.loop(minutes=1)
+    async def check_voice_channel_activity(self):
+        if self.voice_client is None:
+            # Not in a voice channel.
+            self.alone_in_voice_since = None
+            return
+
+        if not self.voice_client.is_connected():
+            # Not connected, clean up.
+            await self.disconnect_voice()
+            return
+
+        # We are in a voice channel and connected.
+        # Check if we are alone.
+        if len(self.voice_client.channel.members) == 1:
+            # We are alone.
+            if self.alone_in_voice_since is None:
+                # We just became alone.
+                self.alone_in_voice_since = time.time()
+            else:
+                # We have been alone for a while.
+                if time.time() - self.alone_in_voice_since > 300:  # 5 minutes
+                    # We have been alone for 5 minutes.
+                    await self.disconnect_voice()
+        else:
+            # We are not alone.
+            self.alone_in_voice_since = None
+
     async def on_ready(self) -> None:
         """
         Notify when the bot is logged into discord.
@@ -731,6 +763,7 @@ class MarBot(discord.Client):
             raise LoggedInError("Not logged in, but discord is reporting ready")
 
         print("Logged in as %s %s" % (self.user.name, self.user.id))
+        self.check_voice_channel_activity.start()
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -856,6 +889,7 @@ def create() -> MarBot:
 
     intents = discord.Intents.default()
     intents.message_content = True
+    intents.voice_states = True
     client = MarBot(intents=intents)
     # client.run()
     return client
@@ -882,6 +916,7 @@ def main(client: Optional[MarBot] = None, loop=None) -> None:
         loop.run_until_complete(asyncio.gather(*futures, return_exceptions=debug))
         print("Try done")
     except:
+        client.check_voice_channel_activity.cancel()
         future_logout = [asyncio.ensure_future(client.close())]
         loop.run_until_complete(asyncio.gather(*future_logout, return_exceptions=debug))
         print("Closing")
