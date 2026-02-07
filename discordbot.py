@@ -90,6 +90,8 @@ class MarBot(discord.Client):
         self.in_maintenance_mode = False
         # List of administrator user names
         self.admins: List[str] = []
+        # Flag to signal that the bot should restart
+        self.should_restart = False
 
         self.reload_config(load_token=True)
         print("Added dynamic files:", self.add_all_dynamic_files())
@@ -606,9 +608,9 @@ class MarBot(discord.Client):
         print(f"Restarting- {sys.executable}")
         print(f"Args: {sys.argv} -- {os.path.abspath(__file__)}")
         self.check_voice_channel_activity.cancel()
+        self.should_restart = True
         await self.close()
         print("Self closed OK")
-        self.do_restart()
 
     def do_restart(self) -> None:
         p = psutil.Process(os.getpid())
@@ -925,6 +927,10 @@ def main(client: Optional[MarBot] = None, loop=None) -> None:
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.close()
     print("Done")
+    
+    # If restart was requested, do it now after the event loop has cleanly exited
+    if client.should_restart:
+        client.do_restart()
 
 
 if __name__ == "__main__":
